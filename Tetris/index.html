@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Prog 5: Rasterization Solution</title>
+  </head>
+
+  <body>
+
+    <script src="three.js"></script>
+
+    <script>
+      var scene = new THREE.Scene();
+      // Can use window.innerWidth
+      var windowWidth = 512;
+      // Can use window.innerHeight
+      var windowHeight = 512;
+      var camera = new THREE.PerspectiveCamera(75, windowWidth/windowHeight, 0.1, 1000);
+
+      // Viewport
+      var renderer = new THREE.WebGLRenderer();
+      renderer.setSize(windowWidth, windowHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Camera positioning
+      camera.position.z = 3;
+
+      // Cube dimensions
+      var cubeDimensions = 0.2;
+      // Create shapes
+      var geometry = new THREE.BoxGeometry(cubeDimensions, cubeDimensions, cubeDimensions);
+      var materialColors = [];
+      materialColors.push( new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: false }) );
+      materialColors.push( new THREE.MeshBasicMaterial({ color: 0x0000FF, wireframe: false }) );
+      materialColors.push( new THREE.MeshBasicMaterial({ color: 0x00FF00, wireframe: false }) );
+      materialColors.push( new THREE.MeshBasicMaterial({ color: 0xFF00FF, wireframe: false }) );
+      materialColors.push( new THREE.MeshBasicMaterial({ color: 0xFFFF00, wireframe: false }) );
+      var whiteMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, wireframe: true });
+      var greenMaterial = new THREE.MeshBasicMaterial({ color: 0x00FF00, wireframe: true });
+      // These tetronimos are under the assumption that the starting block is at 0
+      var tetronimoTypes = [];
+      var squareType = {
+        cubeBX: -cubeDimensions,
+        cubeBY: 0,
+        cubeCX: -cubeDimensions,
+        cubeCY: -cubeDimensions,
+        cubeDX: 0,
+        cubeDY: -cubeDimensions
+      };
+      var tallType = {
+        cubeBX: 0,
+        cubeBY: -cubeDimensions,
+        cubeCX: 0,
+        cubeCY: -cubeDimensions * 2,
+        cubeDX: 0,
+        cubeDY: -cubeDimensions * 3
+      };
+      var tShapeType = {
+        cubeBX: -cubeDimensions,
+        cubeBY: -cubeDimensions,
+        cubeCX: 0,
+        cubeCY: -cubeDimensions,
+        cubeDX: cubeDimensions,
+        cubeDY: -cubeDimensions
+      };
+      var lShapeTypeLeft = {
+        cubeBX: 0,
+        cubeBY: -cubeDimensions,
+        cubeCX: 0,
+        cubeCY: -cubeDimensions * 2,
+        cubeDX: -cubeDimensions,
+        cubeDY: -cubeDimensions * 2
+      };
+      var lShapeTypeRight = {
+        cubeBX: 0,
+        cubeBY: -cubeDimensions,
+        cubeCX: 0,
+        cubeCY: -cubeDimensions * 2,
+        cubeDX: cubeDimensions,
+        cubeDY: -cubeDimensions * 2
+      };
+      var zShapeTypeLeft = {
+        cubeBX: 0,
+        cubeBY: -cubeDimensions,
+        cubeCX: -cubeDimensions,
+        cubeCY: -cubeDimensions,
+        cubeDX: -cubeDimensions,
+        cubeDY: -cubeDimensions * 2
+      };
+      var zShapeTypeRight = {
+        cubeBX: 0,
+        cubeBY: -cubeDimensions,
+        cubeCX: cubeDimensions,
+        cubeCY: -cubeDimensions,
+        cubeDX: cubeDimensions,
+        cubeDY: -cubeDimensions * 2
+      };
+      tetronimoTypes.push(squareType);
+      tetronimoTypes.push(tallType);
+      tetronimoTypes.push(tShapeType);
+      tetronimoTypes.push(lShapeTypeLeft);
+      tetronimoTypes.push(lShapeTypeRight);
+      tetronimoTypes.push(zShapeTypeLeft);
+      tetronimoTypes.push(zShapeTypeRight);
+
+      // Tetris playing field information
+      var rows = 20;
+      var columns = 12;
+      var rowStartingX = -(columns * cubeDimensions) / 2;
+      var rowStartingY = (rows * cubeDimensions) / 2;
+      var rowStartingZ = 0.0;
+      var fallingTetronimo = new THREE.Group();
+      scene.add(fallingTetronimo);
+      var timespeed = 2;
+      var timestage = 1;
+      var nCleared = 1;
+      var speedUp = false;
+      var filledSpots = Array(rows).fill(null).map(()=>Array(columns).fill(null));
+      var cubeAX = 0;
+      var cubeAY = (rows * cubeDimensions) / 2 - cubeDimensions;
+
+      // Generate a random tetronimo
+      function generateTetronimo()
+      {
+        fallingTetronimo.position.set(cubeAX, cubeAY, 0);
+        fallingTetronimo.rotation.set(0, 0, 0);
+        fallingTetronimo.scale.set(1, 1, 1);
+        fallingTetronimo.updateMatrix();
+        // Create a material, color, or image texture
+        var material = materialColors[Math.floor(Math.random() * materialColors.length)];
+        cubeA = new THREE.Mesh(geometry, material);
+        cubeB = new THREE.Mesh(geometry, material);
+        cubeC = new THREE.Mesh(geometry, material);
+        cubeD = new THREE.Mesh(geometry, material);
+        // Select a random shape
+        var cubeCoords = tetronimoTypes[Math.floor(Math.random() * tetronimoTypes.length)];
+        cubeA.position.set(0, 0, 0);
+        cubeB.position.set(cubeCoords.cubeBX, cubeCoords.cubeBY, 0);
+        cubeC.position.set(cubeCoords.cubeCX, cubeCoords.cubeCY, 0);
+        cubeD.position.set(cubeCoords.cubeDX, cubeCoords.cubeDY, 0);
+        fallingTetronimo.add(cubeA);
+        fallingTetronimo.add(cubeB);
+        fallingTetronimo.add(cubeC);
+        fallingTetronimo.add(cubeD);
+        fallingTetronimo.position.y += (-cubeDimensions);
+        if (!checkLocation()) {
+          console.log("game over");
+          scene.clear();
+          fallingTetronimo.clear();
+          filledSpots = Array(rows).fill(null).map(() => Array(columns).fill(null));
+          generateGrid();
+          scene.add(fallingTetronimo);
+          generateTetronimo();
+          return;
+        }
+        fallingTetronimo.position.y += (cubeDimensions);
+      }
+
+      // Lock the tetronimo into location
+      function lockTetronimo()
+      {
+        updateLocations();
+
+        while (fallingTetronimo.children.length > 0) {
+          fallingTetronimo.children[0].applyMatrix4(fallingTetronimo.matrix);
+          scene.add(fallingTetronimo.children[0]);
+        }
+        generateTetronimo();
+        clearFullRows();
+      }
+
+      // The group of the entire grid
+      const grid = new THREE.Group();
+      // Generate the grid for tetris
+      function generateGrid()
+      {
+        var cube;
+        for (var i = 0; i < columns; i++) {
+          for (var j = 0; j < rows; j++) {
+            cube = new THREE.Mesh(geometry, whiteMaterial);
+            cube.position.set(rowStartingX + i * cubeDimensions, rowStartingY - (j + 1) * cubeDimensions, rowStartingZ);
+            grid.add(cube);
+          }
+        }
+        scene.add(grid);
+      }
+
+      // Updates the locations of a tetronimo in the grid
+      function updateLocations()
+      {
+        for (var i = 0; i < fallingTetronimo.children.length; i++) {
+          var vector = new THREE.Vector3();
+          fallingTetronimo.children[i].getWorldPosition(vector);
+          xIndex = Math.round((vector.x + Math.abs(rowStartingX)) / cubeDimensions);
+          yIndex = Math.round((vector.y + Math.abs(rowStartingY)) / cubeDimensions);
+          filledSpots[yIndex][xIndex] = fallingTetronimo.children[i];
+        }
+      }
+
+      // Checks if tetronimo location is valid in the grid
+      function checkLocation()
+      {
+        var xIndex;
+        var yIndex;
+        for (var i = 0; i < fallingTetronimo.children.length; i++) {
+          var vector = new THREE.Vector3();
+          fallingTetronimo.children[i].getWorldPosition(vector);
+          // Is the space valid?
+          xIndex = Math.round((vector.x + Math.abs(rowStartingX)) / cubeDimensions);
+          yIndex = Math.round((vector.y + Math.abs(rowStartingY)) / cubeDimensions);
+          if (xIndex >= columns || yIndex >= rows || xIndex < 0 || yIndex < 0)
+            return false;
+          // Is the space occupied?
+          if (filledSpots[yIndex][xIndex] != null)
+          {
+            //console.log("collision");
+            return false;
+          }
+        }
+        return true;
+      }
+
+      // Check if any rows have to be cleared
+      function clearFullRows()
+      {
+        var clearRow = true;
+        for (var i = 0; i < filledSpots.length; i++) {
+          clearRow = true;
+          for (var j = 0; j < filledSpots[i].length; j++) {
+            if (filledSpots[i][j] == null) {
+              clearRow = false;
+              break;
+            }
+          }
+          if (clearRow) {
+            nCleared += 1;
+            for (var j = 0; j < filledSpots[i].length; j++) {
+              scene.remove(filledSpots[i][j]);
+              for (var k = i; k < filledSpots.length; k++) {
+                if (k + 1 == filledSpots.length) {
+                  filledSpots[k][j] = null;
+                } else {
+                  if (filledSpots[k + 1][j] != null)
+                    filledSpots[k + 1][j].position.y += (-cubeDimensions);
+                  filledSpots[k][j] = filledSpots[k + 1][j];
+                }
+              }
+            }
+            if (nCleared % 5 == 0) {
+              nCleared = 1;
+              timestage *= 2;
+            }
+            i--;
+          }
+        }
+      }
+
+      // Checks for keyboard input
+      function handleKeyDown(event)
+      {
+        switch (event.code) {
+          case "KeyA":
+            camera.position.x -= 0.1;
+            break;
+          case "KeyD":
+            camera.position.x += 0.1;
+            break;
+          case "KeyW":
+            camera.position.y += 0.1;
+            break;
+          case "KeyS":
+            camera.position.y -= 0.1;
+            break;
+          // tetris movement
+          case "ArrowRight": // Go right
+            //console.log("right");
+            // Check before going right
+            fallingTetronimo.position.x += (cubeDimensions);
+            if (!checkLocation())
+            {
+              fallingTetronimo.position.x += (-cubeDimensions);
+            }
+            break;
+          case "ArrowLeft": // Go left
+            //console.log("left");
+            // Check before going left
+            fallingTetronimo.position.x += (-cubeDimensions);
+            if (!checkLocation()) {
+              fallingTetronimo.position.x += (cubeDimensions);
+            }
+            break;
+          case "ArrowDown": // Go down
+            //console.log("down");
+            // Check before going down
+            fallingTetronimo.position.y += (-cubeDimensions);
+            if (!checkLocation()) {
+              fallingTetronimo.position.y += (cubeDimensions);
+              lockTetronimo();
+            }
+            break;
+          case "KeyQ":
+            //console.log("q");
+            fallingTetronimo.rotateZ(Math.PI / 2);
+            if (!checkLocation()) {
+              fallingTetronimo.rotateZ(-Math.PI / 2);
+            }
+            break;
+          case "KeyE":
+            //console.log("e");
+            fallingTetronimo.rotateZ(-Math.PI / 2);
+            if (!checkLocation()) {
+              fallingTetronimo.rotateZ(Math.PI / 2);
+            }
+            break;
+          case "Space": // testing
+            //console.log("space");
+            while (checkLocation()) {
+              fallingTetronimo.position.y += (-cubeDimensions);
+            }
+            fallingTetronimo.position.y += (cubeDimensions);
+            lockTetronimo();
+        } // end switch
+      } // end handleKeyDown
+      document.onkeydown = handleKeyDown;
+
+
+      setTimeout(function alterPosition() {
+        // Check if the tetris block can keep going down
+        fallingTetronimo.position.y += (-cubeDimensions);
+        if (!checkLocation()) {
+          fallingTetronimo.position.y += (cubeDimensions);
+          lockTetronimo();
+        }
+        setTimeout(alterPosition, 1000/(timespeed * timestage));
+      }, 1000/(timespeed * timestage));
+
+
+      // Game logic
+      var update = function()
+      {
+
+      };
+
+      // Draw scene
+      var render = function()
+      {
+        renderer.render(scene, camera);
+      };
+
+      // Run game loop (update, render, repeat)
+      var gameLoop = function()
+      {
+        requestAnimationFrame(gameLoop);
+        update();
+        render();
+      }
+
+      // Run this stuff once
+      generateTetronimo();
+      generateGrid();
+      gameLoop();
+    </script>
+  </body>
+</html>
